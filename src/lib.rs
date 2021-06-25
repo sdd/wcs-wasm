@@ -99,6 +99,14 @@ impl Point3dJs {
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Point3dJs { x, y, z }
     }
+
+    pub fn to_celestial(&self) -> CoordCelestial {
+        let ra: f64 = self.y.atan2(self.x);
+        let ra: f64 = if ra < 0f64 { ra + TWO_PI } else { ra };
+        let dec: f64 = self.z.asin();
+
+        CoordCelestial { ra, dec }
+    }
 }
 
 #[wasm_bindgen(inspectable)]
