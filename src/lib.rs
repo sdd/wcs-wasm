@@ -209,7 +209,7 @@ impl WcsTan {
 
         let mtx_w2i = WcsTan::create_world_to_iwc_matrix(crval);
         let mtx_i2w = mtx_w2i.transpose();
-        let cd_inv: Matrix2<f64> = cd.try_inverse().unwrap().transpose();
+        let cd_inv: Matrix2<f64> = cd.try_inverse().unwrap();
 
         WcsTan {
             crpix,
@@ -398,5 +398,250 @@ impl WcsTan {
         let proj_plane = self.pix_2_proj_plane(&pix);
         let iwc = self.proj_plane_2_iwc(&proj_plane);
         self.iwc_2_world(&iwc).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use approx::assert_relative_eq;
+    use super::*;
+
+    const PROJ_EPSILON: f64 = 0.000000001;
+
+    #[test]
+    fn test_world_2_iwc_2_world() {
+        let crpix = Point2dJs::new(2172.5994830347236f64, 2218.8150445202364f64);
+        let crval = CoordCelestial {
+            ra: 3.2760967777267447f64,
+            dec: 0.9798160384441142f64,
+        };
+        let cd = Mtx2x2Js::new(
+            -0.011164520045582788f64,
+            -0.0048815774641172f64,
+            0.0048815774641172f64,
+            -0.011164520045582788f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        let alioth_radec = CoordCelestial {
+            ra: 193.50728997f64.to_radians(),
+            dec: 55.95982296f64.to_radians(),
+        };
+
+        let alioth_xyz = alioth_radec.to_xyz().into();
+
+        let expected_alioth_iwc_xyz = Point3dJs::new(
+            0.0007526231030527963,
+            0.056576195545634325,
+            0.9983980006270279,
+        );
+
+        let iwc_xyz = wcs.world_2_iwc(&alioth_xyz);
+
+        assert_relative_eq!(iwc_xyz.x, expected_alioth_iwc_xyz.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(iwc_xyz.y, expected_alioth_iwc_xyz.y, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(iwc_xyz.z, expected_alioth_iwc_xyz.z, epsilon = PROJ_EPSILON);
+
+        let back_to_world_xyz = wcs.iwc_2_world(&iwc_xyz);
+
+        assert_relative_eq!(back_to_world_xyz.x, alioth_xyz.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(back_to_world_xyz.y, alioth_xyz.y, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(back_to_world_xyz.z, alioth_xyz.z, epsilon = PROJ_EPSILON);
+
+        let back_to_radec: CoordCelestial = back_to_world_xyz.into();
+
+        assert_relative_eq!(back_to_radec.ra, alioth_radec.ra, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(back_to_radec.dec, alioth_radec.dec, epsilon = PROJ_EPSILON);
+    }
+
+    #[test]
+    fn test_iwc_2_proj_plane_2_iwc() {
+        let crpix = Point2dJs::new(2172.5994830347236f64, 2218.8150445202364f64);
+        let crval = CoordCelestial {
+            ra: 3.2760967777267447f64,
+            dec: 0.9798160384441142f64,
+        };
+        let cd = Mtx2x2Js::new(
+            -0.011164520045582788f64,
+            -0.0048815774641172f64,
+            0.0048815774641172f64,
+            -0.011164520045582788f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        let alioth_iwc = Vector3::new(
+            0.0007526231030527963,
+            0.056576195545634325,
+            0.9983980006270279,
+        );
+
+        let expected_alioth_proj = Point2dJs::new(3.2467785628936436f64, -0.0431913198362728f64);
+
+        let proj_plane = WcsTan::iwc_2_proj_plane(&alioth_iwc).unwrap();
+
+        assert_relative_eq!(proj_plane.x, expected_alioth_proj.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(proj_plane.y, expected_alioth_proj.y, epsilon = PROJ_EPSILON);
+
+        let back_to_iwc = wcs.proj_plane_2_iwc(&proj_plane);
+
+        assert_relative_eq!(back_to_iwc.x, alioth_iwc.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(back_to_iwc.y, alioth_iwc.y, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(back_to_iwc.z, alioth_iwc.z, epsilon = PROJ_EPSILON);
+    }
+
+    #[test]
+    fn test_proj_plane_2_pix_2_proj_plane() {
+        let crpix = Point2dJs::new(2172.5994830347236f64, 2218.8150445202364f64);
+        let crval = CoordCelestial {
+            ra: 3.2760967777267447f64,
+            dec: 0.9798160384441142f64,
+        };
+        let cd = Mtx2x2Js::new(
+            -0.011164520045582788f64,
+            -0.0048815774641172f64,
+            0.0048815774641172f64,
+            -0.011164520045582788f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        let alioth_proj = Vector2::new(3.2467785628936436f64, -0.0431913198362728f64);
+
+        let expected_alioth_pix = Vector2::new(1927.0413397194534f64, 2115.3157651975043f64);
+
+        let result = wcs.proj_plane_2_pix(&alioth_proj);
+
+        assert_relative_eq!(result.x, expected_alioth_pix.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.y, expected_alioth_pix.y, epsilon = PROJ_EPSILON);
+
+        let back_to_proj = wcs.pix_2_proj_plane(&result);
+
+        assert_relative_eq!(back_to_proj.x, alioth_proj.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(back_to_proj.y, alioth_proj.y, epsilon = PROJ_EPSILON);
+    }
+
+    #[test]
+    fn test_pix_2_proj_plane() {
+        let crpix = Point2dJs::new(2172.5994830347236f64, 2218.8150445202364f64);
+        let crval = CoordCelestial {
+            ra: 3.2760967777267447f64,
+            dec: 0.9798160384441142f64,
+        };
+        let cd = Mtx2x2Js::new(
+            -0.011164520045582788f64,
+            -0.0048815774641172f64,
+            0.0048815774641172f64,
+            -0.011164520045582788f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        let alioth_pix = Vector2::new(1927.0413397194534f64, 2115.3157651975043f64);
+
+        let expected_alioth_proj = Vector2::new(3.2467785628936436f64, -0.0431913198362728f64);
+
+        let result = wcs.pix_2_proj_plane(&alioth_pix);
+
+        assert_relative_eq!(result.x, expected_alioth_proj.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.y, expected_alioth_proj.y, epsilon = PROJ_EPSILON);
+    }
+
+    #[test]
+    fn test_world_2_pix() {
+        let crpix = Point2dJs::new(2172.5994830347236f64, 2218.8150445202364f64);
+        let crval = CoordCelestial {
+            ra: 3.2760967777267447f64,
+            dec: 0.9798160384441142f64,
+        };
+        let cd = Mtx2x2Js::new(
+            -0.011164520045582788f64,
+            -0.0048815774641172f64,
+            0.0048815774641172f64,
+            -0.011164520045582788f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        let alioth_xyz = Point3dJs::new(-0.5442908710222142, -0.1307459229751705, 0.828645250603206);
+
+        let expected_alioth_pix = Vector2::new(1927.0413397194534f64, 2115.3157651975043f64);
+
+        let result = wcs.world_2_pix(alioth_xyz).unwrap();
+
+        assert_relative_eq!(result.x, expected_alioth_pix.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.y, expected_alioth_pix.y, epsilon = PROJ_EPSILON);
+    }
+
+    #[test]
+    fn test_pix_2_world() {
+        let crpix = Point2dJs::new(2172.5994830347236f64, 2218.8150445202364f64);
+        let crval = CoordCelestial {
+            ra: 3.2760967777267447f64,
+            dec: 0.9798160384441142f64,
+        };
+        let cd = Mtx2x2Js::new(
+            -0.011164520045582788f64,
+            -0.0048815774641172f64,
+            0.0048815774641172f64,
+            -0.011164520045582788f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        let alioth_pix = Point2dJs::new(1927.0413397194534f64, 2115.3157651975043f64);
+
+        let expected_alioth_xyz =
+            Vector3::new(-0.5442908710222142, -0.1307459229751705, 0.828645250603206);
+
+        let result = wcs.pix_2_world(alioth_pix);
+
+        assert_relative_eq!(result.x, expected_alioth_xyz.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.y, expected_alioth_xyz.y, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.z, expected_alioth_xyz.z, epsilon = PROJ_EPSILON);
+    }
+
+    #[test]
+    fn test_world_2_pix_2_world() {
+        let crpix: Point2dJs = Point2dJs::new(2172.5994830347236f64, 2218.8150445202364f64);
+
+        let crval: CoordCelestial = CoordCelestial {
+            ra: 3.2760967777267447f64,
+            dec: 0.9798160384441142f64,
+        };
+        let cd: Mtx2x2Js = Mtx2x2Js::new(
+            -0.011164520045582788f64,
+            -0.0048815774641172f64,
+            0.0048815774641172f64,
+            -0.011164520045582788f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        let alioth_radec = CoordCelestial {
+            ra: 193.50728997f64.to_radians(),
+            dec: 55.95982296f64.to_radians(),
+        };
+
+        let alioth_xyz: Point3dJs = alioth_radec.to_xyz();
+
+        let expected_alioth_pix = Point2dJs::new(1927.0413397194534f64, 2115.3157651975043f64);
+
+        let result = wcs.world_2_pix(alioth_xyz).unwrap();
+
+        assert_relative_eq!(result.x, expected_alioth_pix.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.y, expected_alioth_pix.y, epsilon = PROJ_EPSILON);
+
+        let result = wcs.pix_2_world(result);
+
+        assert_relative_eq!(result.x, alioth_xyz.x, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.y, alioth_xyz.y, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.z, alioth_xyz.z, epsilon = PROJ_EPSILON);
+
+        let result = result.to_celestial();
+
+        assert_relative_eq!(result.ra, alioth_radec.ra, epsilon = PROJ_EPSILON);
+        assert_relative_eq!(result.dec, alioth_radec.dec, epsilon = PROJ_EPSILON);
     }
 }
