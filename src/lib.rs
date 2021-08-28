@@ -247,28 +247,27 @@ impl WcsTan {
             ))
         }
     }
+    */
 
-    pub fn with_updated_sip(&self, new_sip_params: (Vec<f64>, Vec<f64>)) -> WcsTan {
+    pub fn with_updated_sip(&self, new_sip_params_x: Vec<f64>, new_sip_params_y: Vec<f64>) -> WcsTan {
         let updated_sip_params = if let Some((x_params, y_params)) = &self.sip_params {
             (
-                new_sip_params
-                    .0
+                new_sip_params_x
                     .iter()
                     .zip(x_params.iter())
                     .map(|(a, b)| a + b)
                     .collect(),
-                new_sip_params
-                    .1
+                new_sip_params_y
                     .iter()
                     .zip(y_params.iter())
                     .map(|(a, b)| a + b)
                     .collect(),
             )
         } else {
-            new_sip_params
+            (new_sip_params_x, new_sip_params_y)
         };
 
-        debug!("SIP params updated to {:?}", &updated_sip_params);
+        //debug!("SIP params updated to {:?}", &updated_sip_params);
 
         let updated_sip_polynomial = (
             Polynomial::new(updated_sip_params.0.clone()),
@@ -300,7 +299,7 @@ impl WcsTan {
             sip_params: None,
             sip_polynomial: None,
         }
-    }*/
+    }
 
     fn create_world_to_iwc_matrix(crval: CoordCelestial) -> Matrix3<f64> {
         let (sin_ra_p, cos_ra_p) = crval.ra.sin_cos();
@@ -372,8 +371,15 @@ impl WcsTan {
     }
 
     fn pix_2_proj_plane(&self, pix: &Vector2<f64>) -> Vector2<f64> {
-        // TODO: should this invert SIP?
         self.cd * (pix - self.crpix)
+
+        // TODO: this SIP inversion is wrong
+        /*
+        if let Some((p0, p1)) = &self.sip_polynomial {
+            self.cd * (pix - self.crpix - Vector2::new(p0.eval(pix.x), p1.eval(pix.y)))
+        } else {
+            self.cd * (pix - self.crpix)
+        }*/
     }
 
     pub fn world_2_pix(&self, world: Point3dJs) -> Option<Point2dJs> {
@@ -643,5 +649,56 @@ mod tests {
 
         assert_relative_eq!(result.ra, alioth_radec.ra, epsilon = PROJ_EPSILON);
         assert_relative_eq!(result.dec, alioth_radec.dec, epsilon = PROJ_EPSILON);
+    }
+
+    #[test]
+    fn test_world_2_pix_two() {
+        // From SAM_4222.JPG
+
+        let crpix = Point2dJs::new(3181.286553668395f64, 2015.3096655692111f64);
+        let crval = CoordCelestial {
+            ra: 2.89606535f64,
+            dec: 1.077758845f64,
+        };
+        let cd = Mtx2x2Js::new(
+            -0.012648362747604055f64,
+            -0.001115440909685504f64,
+            0.0011483136431246982f64,
+            -0.012661946361956078f64,
+        );
+
+        let wcs = WcsTan::new(crpix, crval, cd);
+
+        // DUBHE: [165.932, 61.751]
+        // ALKAID: [206.8852, 49.3133]
+        // MERAK: [165.4603, 56.3824]
+        // ALIOTH: [193.5073, 55.9598]
+
+        let dubhe_xyz = Point3dJs::new(-0.45910891449532026, 0.11504763400370943, 0.8808989990578245);
+        let alkaid_xyz = Point3dJs::new(-0.5814589564761689, -0.2948021361094878, 0.7582856865845008);
+        let merak_xyz = Point3dJs::new(-0.535916223361377, 0.1389936001803212, 0.8327512117355289);
+        let alioth_xyz = Point3dJs::new(-0.5442908710222142, -0.1307459229751705, 0.828645250603206);
+
+        let expected_dubhe_pix = Vector2::new(3181.286553668395f64, 2015.3096655692111f64);
+        let expected_alkaid_pix = Vector2::new(1017.1925122920688f64, 2194.822679036195f64);
+        let expected_merak_pix = Vector2::new(3164.682886334279f64, 2438.9729863301413f64);
+        let expected_alioth_pix = Vector2::new(1955.896866874826f64, 2114.7223628042207f64);
+
+        let result_dubhe = wcs.world_2_pix(dubhe_xyz).unwrap();
+        let result_alkaid = wcs.world_2_pix(alkaid_xyz).unwrap();
+        let result_merak = wcs.world_2_pix(merak_xyz).unwrap();
+        let result_alioth = wcs.world_2_pix(alioth_xyz).unwrap();
+
+        assert_relative_eq!(result_dubhe.x, expected_dubhe_pix.x, epsilon = 1f64);
+        assert_relative_eq!(result_dubhe.y, expected_dubhe_pix.y, epsilon = 1f64);
+
+        assert_relative_eq!(result_alkaid.x, expected_alkaid_pix.x, epsilon = 1f64);
+        assert_relative_eq!(result_alkaid.y, expected_alkaid_pix.y, epsilon = 1f64);
+
+        assert_relative_eq!(result_merak.x, expected_merak_pix.x, epsilon = 1f64);
+        assert_relative_eq!(result_merak.y, expected_merak_pix.y, epsilon = 1f64);
+        
+        assert_relative_eq!(result_alioth.x, expected_alioth_pix.x, epsilon = 1f64);
+        assert_relative_eq!(result_alioth.y, expected_alioth_pix.y, epsilon = 1f64);
     }
 }
